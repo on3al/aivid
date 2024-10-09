@@ -206,18 +206,36 @@ function getAudioDuration(audioFile) {
 }
 
 // Function to concatenate all individual videos into a single video
+// Function to concatenate all individual videos into a single video
 async function concatenateVideos(videoFiles, output) {
-    const command = ffmpeg();
+    console.log("Video files to concatenate:", videoFiles);
+    console.log("Output Directory:", outputDir);
 
-    videoFiles.forEach((videoFile) => {
-        command.input(videoFile);
-    });
+    const listFilePath = path.join(outputDir, 'video_list.txt');
+
+    try {
+        const fileContent = videoFiles.map(file => `file '${path.resolve(file)}'`).join('\n');
+        fs.writeFileSync(listFilePath, fileContent);
+        console.log(`Video list created at: ${listFilePath}`);
+
+        // Debug: Read and log the contents of the list file
+        const content = fs.readFileSync(listFilePath, 'utf-8');
+        console.log(`Contents of video_list.txt:\n${content}`);
+    } catch (error) {
+        console.error("Error writing to video list file:", error);
+        return; // Exit if there's an error
+    }
 
     return new Promise((resolve, reject) => {
-        command
+        ffmpeg()
+            .input(listFilePath)
+            .inputOptions('-f', 'concat') // Separate the options correctly
+            .inputOptions('-safe', '0') // Separate the options correctly
+            .outputOptions('-y') // Allow overwriting the output file
             .output(output)
             .on('end', () => {
                 console.log(`Final video created: ${output}`);
+                fs.unlinkSync(listFilePath); // Clean up the list file
                 resolve();
             })
             .on('error', (err) => {
@@ -227,6 +245,9 @@ async function concatenateVideos(videoFiles, output) {
             .run();
     });
 }
+
+
+
 
 // Execute the main function with the provided prompt
 generateTikTokVideo(prompt);

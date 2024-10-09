@@ -4,3 +4,7 @@ node_modules/*
 out/*
 out.txt
 .DS_Store
+
+video_list.txt
+
+output_video.mp4
