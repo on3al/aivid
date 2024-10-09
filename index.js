@@ -157,14 +157,15 @@ async function createIndividualVideos(images, audioFiles, subtitleFiles) {
         await new Promise((resolve, reject) => {
             ffmpeg()
                 .input(images[i])
+                .loop(1)
                 .input(audioFiles[i].audioPath)
                 .outputOptions(`-t ${audioDuration}`) // Set duration based on audio length
                 .output(videoFilePath)  // Output video file
                 .size('1080x1920')  // Set 9:16 resolution
                 .videoCodec('libx264')  // Set video codec to H.264
                 .audioCodec('aac')  // Set audio codec to AAC
-                .outputOptions(`-vf ass='${assSubtitlePath}'`)   // Use the full path for the .ass file
-                .outputOptions('-r 60')  // Set frame rate to 60 FPS
+                .outputOptions(`-vf subtitles='${assSubtitlePath}'`)   // Use the full path for the .ass file
+                .outputOptions('-r 30')  // Set frame rate to 60 FPS
                 .outputOptions('-loglevel verbose') // Add verbose logging for debugging
                 .on('end', () => {
                     console.log(`Video created with subtitles at 60 FPS: ${videoFilePath}`);
