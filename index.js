@@ -7,6 +7,7 @@ import ffmpeg from 'fluent-ffmpeg';  // FFMPEG for video manipulation
 import yargs from 'yargs';  // CLI argument parsing
 import axios from 'axios';  // HTTP requests for downloading images/audio
 import { hideBin } from 'yargs/helpers';
+import moment from 'moment';  // For timestamp formatting
 
 // Define __dirname in ES module scope
 const __filename = fileURLToPath(import.meta.url);
@@ -36,8 +37,11 @@ const argv = yargs(hideBin(process.argv))
     })
     .argv;
 
-// Create output directory based on runname
-const outputDir = path.join(__dirname, 'out', argv.runname);
+// Get current timestamp in 'YYYYMMDD-HHmmss' format
+const timestamp = moment().format('YYYYMMDD-HHmmss');
+
+// Create output directory based on runname and timestamp
+const outputDir = path.join(__dirname, 'out', `${argv.runname}-${timestamp}`);
 if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
 }
@@ -104,7 +108,7 @@ async function generateImageForScene(sceneDescription, sceneNumber) {
             n: 1,
             model: "dall-e-3",
             quality: "hd",
-            size: "1792x1024",
+            size: "1024x1792",
             response_format: "url",
         });
 
@@ -158,7 +162,7 @@ async function createVideo(images, audioFiles, output) {
     return new Promise((resolve, reject) => {
         command
             .output(output)
-            .size('1920x1080')  // HD resolution (16:9)
+            .size('1080x1920')  // HD resolution (16:9)
             .videoCodec('libx264')
             .audioCodec('aac')
             .on('end', resolve)
