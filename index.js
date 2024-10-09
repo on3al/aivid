@@ -165,7 +165,7 @@ async function createIndividualVideos(images, audioFiles, subtitleFiles) {
                 .videoCodec('libx264')  // Set video codec to H.264
                 .audioCodec('aac')  // Set audio codec to AAC
                 .outputOptions(`-vf subtitles='${assSubtitlePath}'`)   // Use the full path for the .ass file
-                .outputOptions('-r 30')  // Set frame rate to 60 FPS
+                .outputOptions('-r 60')  // Set frame rate to 60 FPS
                 .outputOptions('-loglevel verbose') // Add verbose logging for debugging
                 .on('end', () => {
                     console.log(`Video created with subtitles at 60 FPS: ${videoFilePath}`);
@@ -216,6 +216,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         const minDuration = 0.5;  // Minimum duration of 0.5 seconds for each word
 
         // Loop through each word and create ASS content per word
+        let lastEndTime = 0; // Track the end time of the previous word to ensure no overlap
+
         for (let i = 0; i < words.length; i++) {
             const word = words[i];
             const nextWord = words[i + 1];
@@ -224,14 +226,19 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             let startTime = word.start;
             let endTime = word.end;
 
+            // Ensure the start time is not earlier than the previous word's end time
+            if (startTime < lastEndTime) {
+                startTime = lastEndTime + 0.01;  // Increment by 0.01 seconds to avoid overlap
+            }
+
             // Ensure minimum duration for each word
             if (endTime - startTime < minDuration) {
                 endTime = startTime + minDuration;
             }
 
-            // If there is a next word, make sure we don't overlap with its start time
-            if (nextWord && endTime > nextWord.start) {
-                endTime = nextWord.start - 0.01;  // Adjust to avoid overlap
+            // Ensure the end time doesn't overlap with the next word's start time
+            if (nextWord && endTime >= nextWord.start) {
+                endTime = nextWord.start - 0.01;  // Adjust to avoid overlap with the next word
             }
 
             // Format the start and end times in ASS format (h:mm:ss.xx)
@@ -240,6 +247,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
             // Add dialogue line in ASS format
             assContent += `Dialogue: 0,${startTimestamp},${endTimestamp},Default,,0,0,0,,${word.word}\n`;
+
+            // Update the lastEndTime to the current word's end time for the next iteration
+            lastEndTime = endTime;
         }
 
         // Define the path for the .ass file
@@ -262,6 +272,7 @@ function formatTimeASS(timeInSeconds) {
 
     return `${String(hours)}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(centiseconds).padStart(2, '0')}`;
 }
+
 
 
 
