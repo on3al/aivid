@@ -155,19 +155,36 @@ async function generateSpeech(text, sceneNumber) {
 // Function to create the video using FFMPEG
 async function createVideo(images, audioFiles, output) {
     const command = ffmpeg();
-    images.forEach((img, i) => {
-        command.input(img).input(audioFiles[i]);
-    });
+
+    // Create video for each image and audio file
+    for (let i = 0; i < images.length; i++) {
+        command.input(images[i])
+            .input(audioFiles[i])
+            .inputOptions(`-t ${await getAudioDuration(audioFiles[i])}`); // Set the duration to match audio length
+    }
 
     return new Promise((resolve, reject) => {
         command
             .output(output)
-            .size('1080x1920')  // HD resolution (16:9)
+            .size('1080x1920')  // 9:16 resolution
             .videoCodec('libx264')
             .audioCodec('aac')
             .on('end', resolve)
             .on('error', reject)
             .run();
+    });
+}
+
+// Function to get the duration of an audio file
+function getAudioDuration(audioFile) {
+    return new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(audioFile, (err, metadata) => {
+            if (err) {
+                return reject(err);
+            }
+            const duration = metadata.format.duration;
+            resolve(duration);
+        });
     });
 }
 
