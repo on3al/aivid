@@ -1,0 +1,30 @@
+Create a 45-second narrated story about a famous Greek myth in JSON format. The story should be broken into 3 distinct scenes, each with a `scene_number`, `scene_description`, and `narration`. Focus on a key moment in Greek mythology, such as the tale of Theseus and the Minotaur.
+
+Please ensure that the descriptions and narrations do not contain graphic violence, blood, or other content that might violate content policies. 
+
+
+
+The JSON structure should look like this:
+{
+  "title": "some intriguing title",
+  "scenes": [
+    {
+      "scene_number": 1,
+      "scene_description": "some description",
+      "narration": "some very intriguing narration that will take 5-10 seconds when converted to audio"
+    },
+     {
+      "scene_number": 2,
+      "scene_description": "some description",
+      "narration": "some very intriguing narration that will take 5-10 seconds when converted to audio"
+    },
+    ...
+    {
+      "scene_number": n,
+      "scene_description": "some description",
+      "narration": "some very intriguing narration that will take 5-10 seconds when converted to audio"
+    },
+  ]
+}
+
+Each scene should have a detailed description and a corresponding narration that would be used for both image generation and text-to-speech. Keep the overall story concise but dramatic, suitable for a 45-second TikTok video.
