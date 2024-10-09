@@ -1,4 +1,5 @@
-Create a 45-second narrated story about a famous Greek myth in JSON format. The story should be broken into 3 distinct scenes, each with a `scene_number`, `scene_description`, and `narration`. Focus on a key moment in Greek mythology, such as the tale of Theseus and the Minotaur.
+Create a 45-second narrated story about a cowboy western comic in JSON format. The story should be broken into 2 distinct scenes, each with a `scene_number`, `scene_description`, and `narration`. 
+Each scene should be entertaining and flow into the next with the first scene being an intro and the last a conclusion that create a cohesive story, that could be listened to in a seamless loop
 
 Please ensure that the descriptions and narrations do not contain graphic violence, blood, or other content that might violate content policies. 
 
@@ -11,12 +12,12 @@ The JSON structure should look like this:
     {
       "scene_number": 1,
       "scene_description": "some description",
-      "narration": "some very intriguing narration that will take 5-10 seconds when converted to audio"
+      "narration": "some very intrigueing narration that will take 5-10 seconds when converted to audio"
     },
      {
       "scene_number": 2,
       "scene_description": "some description",
-      "narration": "some very intriguing narration that will take 5-10 seconds when converted to audio"
+      "narration": "some very intrigueing narration that will take 5-10 seconds when converted to audio"
     },
     ...
     {

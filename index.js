@@ -67,13 +67,14 @@ async function generateTikTokVideo(prompt) {
         fs.writeFileSync(scriptFilePath, JSON.stringify(jsonResponse, null, 2));
         console.log(`Script saved to: ${scriptFilePath}`);
 
-        // Step 2: Generate images and audio for each scene
+        // Step 2: Generate images, audio, and subtitles for each scene
         const scenes = jsonResponse.scenes;
         const images = await Promise.all(scenes.map((scene, i) => generateImageForScene(scene.scene_description, i)));
         const audioFiles = await Promise.all(scenes.map((scene, i) => generateSpeech(scene.narration, i)));
+        const subtitleFiles = await Promise.all(scenes.map((_, i) => transcribeAudioToASS(audioFiles[i].audioPath, i)));
 
-        // Step 3: Create individual videos for each image/audio pair
-        const videoFiles = await createIndividualVideos(images, audioFiles);
+        // Step 3: Create individual videos for each image/audio/subtitle pair
+        const videoFiles = await createIndividualVideos(images, audioFiles, subtitleFiles);
         console.log(`Individual videos created: ${videoFiles}`);
 
         // Step 4: Concatenate all individual videos into a single video
@@ -135,53 +136,42 @@ async function generateImageForScene(sceneDescription, sceneNumber) {
     }
 }
 
-// Function to generate text-to-speech and save it as an mp3 file
-async function generateSpeech(text, sceneNumber) {
-    try {
-        const mp3 = await openai.audio.speech.create({
-            model: "tts-1",  // Correct TTS model
-            voice: "alloy",  // Chosen voice
-            input: text,  // Scene narration text
-        });
 
-        const buffer = Buffer.from(await mp3.arrayBuffer());
-        const audioPath = path.join(outputDir, `audio${sceneNumber}.mp3`);
-        await fs.promises.writeFile(audioPath, buffer);
-        console.log(`Generated Audio saved to: ${audioPath}`);
-
-        return audioPath;
-    } catch (error) {
-        console.error("Error generating speech:", error);
-        throw error;
-    }
-}
-
-// Function to create individual videos for each image/audio pair
-// Function to create individual videos for each image/audio pair
-async function createIndividualVideos(images, audioFiles) {
+async function createIndividualVideos(images, audioFiles, subtitleFiles) {
     const videoFiles = [];
 
     for (let i = 0; i < images.length; i++) {
         const videoFilePath = path.join(outputDir, `scene_${i}.mp4`);
         videoFiles.push(videoFilePath);
 
-        const audioDuration = await getAudioDuration(audioFiles[i]); // Get audio duration first
+        const audioDuration = await getAudioDuration(audioFiles[i].audioPath); // Get audio duration first
+        const assSubtitlePath = path.resolve(subtitleFiles[i]);  // Use subtitle files passed as separate input
+
+        // Log paths for debugging
+        console.log(`Creating video for scene ${i}:`);
+        console.log(`Image Path: ${images[i]}`);
+        console.log(`Audio Path: ${audioFiles[i].audioPath}`);
+        console.log(`ASS Path: ${assSubtitlePath}`);
+        console.log(`Video Output Path: ${videoFilePath}`);
 
         await new Promise((resolve, reject) => {
             ffmpeg()
                 .input(images[i])
-                .input(audioFiles[i])
+                .input(audioFiles[i].audioPath)
                 .outputOptions(`-t ${audioDuration}`) // Set duration based on audio length
                 .output(videoFilePath)  // Output video file
                 .size('1080x1920')  // Set 9:16 resolution
                 .videoCodec('libx264')  // Set video codec to H.264
                 .audioCodec('aac')  // Set audio codec to AAC
+                .outputOptions(`-vf ass='${assSubtitlePath}'`)   // Use the full path for the .ass file
+                .outputOptions('-r 60')  // Set frame rate to 60 FPS
+                .outputOptions('-loglevel verbose') // Add verbose logging for debugging
                 .on('end', () => {
-                    console.log(`Video created: ${videoFilePath}`);
+                    console.log(`Video created with subtitles at 60 FPS: ${videoFilePath}`);
                     resolve();
                 })
                 .on('error', (err) => {
-                    console.error(`Error creating video for scene ${i}:`, err);
+                    console.error(`Error creating video with subtitles for scene ${i}:`, err);
                     reject(err);
                 })
                 .run();
@@ -190,6 +180,88 @@ async function createIndividualVideos(images, audioFiles) {
 
     return videoFiles;
 }
+
+
+// Function to convert verbose JSON transcription to .ass format (per word with correct timestamps)
+async function transcribeAudioToASS(audioPath, sceneNumber) {
+    try {
+        const transcription = await openai.audio.transcriptions.create({
+            file: fs.createReadStream(audioPath),
+            model: "whisper-1",
+            response_format: "verbose_json",
+            timestamp_granularities: ["word"]
+        });
+
+        // Log the full transcription response for debugging
+        console.log(`Transcription response for scene ${sceneNumber}:`, transcription);
+
+        // Create the ASS header
+        let assContent = `[Script Info]
+Title: Scene ${sceneNumber}
+Original Script: OpenAI Whisper
+ScriptType: v4.00+
+PlayDepth: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,2,10,10,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`;
+
+        // Extract words from the verbose JSON response
+        const words = transcription.words;
+        const minDuration = 0.5;  // Minimum duration of 0.5 seconds for each word
+
+        // Loop through each word and create ASS content per word
+        for (let i = 0; i < words.length; i++) {
+            const word = words[i];
+            const nextWord = words[i + 1];
+
+            // Calculate start and end times
+            let startTime = word.start;
+            let endTime = word.end;
+
+            // Ensure minimum duration for each word
+            if (endTime - startTime < minDuration) {
+                endTime = startTime + minDuration;
+            }
+
+            // If there is a next word, make sure we don't overlap with its start time
+            if (nextWord && endTime > nextWord.start) {
+                endTime = nextWord.start - 0.01;  // Adjust to avoid overlap
+            }
+
+            // Format the start and end times in ASS format (h:mm:ss.xx)
+            const startTimestamp = formatTimeASS(startTime);
+            const endTimestamp = formatTimeASS(endTime);
+
+            // Add dialogue line in ASS format
+            assContent += `Dialogue: 0,${startTimestamp},${endTimestamp},Default,,0,0,0,,${word.word}\n`;
+        }
+
+        // Define the path for the .ass file
+        const assPath = path.join(outputDir, `subtitles${sceneNumber}.ass`);
+        fs.writeFileSync(assPath, assContent);  // Save the .ass content to file
+
+        return assPath;
+    } catch (error) {
+        console.error("Error transcribing audio:", error);
+        throw error;  // Rethrow the error to ensure it's caught upstream
+    }
+}
+
+// Helper function to format time in ASS style (h:mm:ss.xx)
+function formatTimeASS(timeInSeconds) {
+    const hours = Math.floor(timeInSeconds / 3600);
+    const minutes = Math.floor((timeInSeconds % 3600) / 60);
+    const seconds = Math.floor(timeInSeconds % 60);
+    const centiseconds = Math.floor((timeInSeconds % 1) * 100);  // ASS uses centiseconds, not milliseconds
+
+    return `${String(hours)}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(centiseconds).padStart(2, '0')}`;
+}
+
 
 
 // Function to get the duration of an audio file
@@ -204,8 +276,30 @@ function getAudioDuration(audioFile) {
         });
     });
 }
+async function generateSpeech(text, sceneNumber) {
+    try {
+        const mp3 = await openai.audio.speech.create({
+            model: "tts-1",  // Correct TTS model
+            voice: "alloy",  // Chosen voice
+            input: text,  // Scene narration text
+        });
 
-// Function to concatenate all individual videos into a single video
+        const buffer = Buffer.from(await mp3.arrayBuffer());
+        const audioPath = path.join(outputDir, `audio${sceneNumber}.mp3`);
+        await fs.promises.writeFile(audioPath, buffer);
+        console.log(`Generated Audio saved to: ${audioPath}`);
+
+        // Transcribe the audio file to ASS using OpenAI's Whisper model
+        const assPath = await transcribeAudioToASS(audioPath, sceneNumber);
+        console.log(`Transcription saved to: ${assPath}`);
+
+        return { audioPath, assPath };
+    } catch (error) {
+        console.error("Error generating speech or transcription:", error);
+        throw error;
+    }
+}
+
 // Function to concatenate all individual videos into a single video
 async function concatenateVideos(videoFiles, output) {
     console.log("Video files to concatenate:", videoFiles);
@@ -245,8 +339,6 @@ async function concatenateVideos(videoFiles, output) {
             .run();
     });
 }
-
-
 
 
 // Execute the main function with the provided prompt
