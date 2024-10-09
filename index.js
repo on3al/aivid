@@ -72,10 +72,14 @@ async function generateTikTokVideo(prompt) {
         const images = await Promise.all(scenes.map((scene, i) => generateImageForScene(scene.scene_description, i)));
         const audioFiles = await Promise.all(scenes.map((scene, i) => generateSpeech(scene.narration, i)));
 
-        // Step 3: Create video using FFMPEG
-        const videoPath = path.join(outputDir, 'output.mp4');
-        await createVideo(images, audioFiles, videoPath);
-        console.log(`TikTok Video Generated: ${videoPath}`);
+        // Step 3: Create individual videos for each image/audio pair
+        const videoFiles = await createIndividualVideos(images, audioFiles);
+        console.log(`Individual videos created: ${videoFiles}`);
+
+        // Step 4: Concatenate all individual videos into a single video
+        const finalVideoPath = path.join(outputDir, 'final_output.mp4');
+        await concatenateVideos(videoFiles, finalVideoPath);
+        console.log(`Final TikTok Video Generated: ${finalVideoPath}`);
 
     } catch (error) {
         console.error("Error generating video:", error);
@@ -152,28 +156,41 @@ async function generateSpeech(text, sceneNumber) {
     }
 }
 
-// Function to create the video using FFMPEG
-async function createVideo(images, audioFiles, output) {
-    const command = ffmpeg();
+// Function to create individual videos for each image/audio pair
+// Function to create individual videos for each image/audio pair
+async function createIndividualVideos(images, audioFiles) {
+    const videoFiles = [];
 
-    // Create video for each image and audio file
     for (let i = 0; i < images.length; i++) {
-        command.input(images[i])
-            .input(audioFiles[i])
-            .inputOptions(`-t ${await getAudioDuration(audioFiles[i])}`); // Set the duration to match audio length
+        const videoFilePath = path.join(outputDir, `scene_${i}.mp4`);
+        videoFiles.push(videoFilePath);
+
+        const audioDuration = await getAudioDuration(audioFiles[i]); // Get audio duration first
+
+        await new Promise((resolve, reject) => {
+            ffmpeg()
+                .input(images[i])
+                .input(audioFiles[i])
+                .outputOptions(`-t ${audioDuration}`) // Set duration based on audio length
+                .output(videoFilePath)  // Output video file
+                .size('1080x1920')  // Set 9:16 resolution
+                .videoCodec('libx264')  // Set video codec to H.264
+                .audioCodec('aac')  // Set audio codec to AAC
+                .on('end', () => {
+                    console.log(`Video created: ${videoFilePath}`);
+                    resolve();
+                })
+                .on('error', (err) => {
+                    console.error(`Error creating video for scene ${i}:`, err);
+                    reject(err);
+                })
+                .run();
+        });
     }
 
-    return new Promise((resolve, reject) => {
-        command
-            .output(output)
-            .size('1080x1920')  // 9:16 resolution
-            .videoCodec('libx264')
-            .audioCodec('aac')
-            .on('end', resolve)
-            .on('error', reject)
-            .run();
-    });
+    return videoFiles;
 }
+
 
 // Function to get the duration of an audio file
 function getAudioDuration(audioFile) {
@@ -185,6 +202,29 @@ function getAudioDuration(audioFile) {
             const duration = metadata.format.duration;
             resolve(duration);
         });
+    });
+}
+
+// Function to concatenate all individual videos into a single video
+async function concatenateVideos(videoFiles, output) {
+    const command = ffmpeg();
+
+    videoFiles.forEach((videoFile) => {
+        command.input(videoFile);
+    });
+
+    return new Promise((resolve, reject) => {
+        command
+            .output(output)
+            .on('end', () => {
+                console.log(`Final video created: ${output}`);
+                resolve();
+            })
+            .on('error', (err) => {
+                console.error('Error concatenating videos:', err);
+                reject(err);
+            })
+            .run();
     });
 }
 
